@@ -12,15 +12,40 @@ import sqlite3
 from lexer import Lexer, LexerError, Token
 from parser import Parser, ParserError
 from ast_builder import ASTBuilder, ASTBuildError, print_ast
-from ast_nodes import (
-    QueryNode, ColumnNode, StarNode, FromNode,
-    WhereNode, ConditionNode, LogicalOpNode,
-    OrderByNode, LiteralNode
-)
+from ast_nodes import QueryNode
 from semantic import SchemaLoader, SemanticAnalyzer, SemanticError
 from optimizer import QueryOptimizer
-from execution_plan import ExecutionPlanGenerator, PlanNode
 from executor import QueryExecutor, ExecutionError
+
+
+class PlanStep:
+    """One readable operation in the physical plan."""
+
+    def __init__(self, operation, details=""):
+        self.operation, self.details = operation, details
+
+
+class ExecutionPlanGenerator:
+    """Build the linear scan/filter/sort/project plan for one-table SQL."""
+
+    def generate(self, ast):
+        plan = [PlanStep("Table Scan", ast.table.table_name)]
+        if ast.where:
+            plan.append(PlanStep("Filter", self._condition(ast.where.condition)))
+        if ast.order_by:
+            plan.append(PlanStep("Sort", f"{ast.order_by.column} {ast.order_by.direction}"))
+        columns = ["*" if getattr(c, "name", None) is None else c.name for c in ast.columns]
+        plan.append(PlanStep("Projection", ", ".join(columns)))
+        return plan
+
+    def _condition(self, condition):
+        if hasattr(condition, "column"):
+            value = condition.value
+            text = repr(value.value) if value.lit_type == "STRING" else str(value.value)
+            return f"{condition.column} {condition.operator} {text}"
+        if hasattr(condition, "left"):
+            return f"({self._condition(condition.left)} {condition.operator} {self._condition(condition.right)})"
+        return str(condition)
 
 
 # =============================================================================
@@ -87,8 +112,8 @@ class CompilationResult:
         ast_dict        (dict): AST as a dictionary.
         semantic_errors (list): Semantic errors (empty if valid).
         optimization    (OptimizationResult): Optimization details.
-        original_plan   (list[PlanNode]): Plan from original AST.
-        optimized_plan  (list[PlanNode]): Plan from optimized AST.
+        original_plan   (list[PlanStep]): Plan from original AST.
+        optimized_plan  (list[PlanStep]): Plan from optimized AST.
         reconstructed_sql (str): SQL reconstructed from AST.
         result_columns  (list[str]): Result column names.
         result_rows     (list[tuple]): Result data rows.
