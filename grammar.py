@@ -26,7 +26,7 @@ BY        = "BY"
 ASC       = "ASC"
 DESC      = "DESC"
 AND       = "AND"
-OR        = "OR"
+OR        = "OR" 
 
 # --- Identifiers and Literals ---
 IDENTIFIER = "IDENTIFIER"
